@@ -1,0 +1,51 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <thread>
+#include <zlib.h>
+
+#define CHUNK 16384
+
+void compressChunk(const std::string& inputFile, const std::string& outputFile, int start, int size) {
+    std::ifstream in(inputFile, std::ios::binary);
+    in.seekg(start);
+
+    std::vector<char> inBuffer(size);
+    in.read(inBuffer.data(), size);
+
+    std::vector<char> outBuffer(compressBound(size));
+
+    uLongf compressedSize = outBuffer.size();
+    compress((Bytef*)outBuffer.data(), &compressedSize, (Bytef*)inBuffer.data(), size);
+
+    std::ofstream out(outputFile, std::ios::binary | std::ios::app);
+    out.write(reinterpret_cast<char*>(&compressedSize), sizeof(compressedSize)); // Save compressed size
+    out.write(outBuffer.data(), compressedSize);
+}
+
+void multithreadedCompress(const std::string& inputFile, const std::string& outputFile, int numThreads) {
+    std::ifstream in(inputFile, std::ios::binary | std::ios::ate);
+    int fileSize = in.tellg();
+    int chunkSize = fileSize / numThreads;
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < numThreads; ++i) {
+        int start = i * chunkSize;
+        int size = (i == numThreads - 1) ? (fileSize - start) : chunkSize;
+
+        threads.emplace_back(compressChunk, inputFile, outputFile, start, size);
+    }
+
+    for (auto& t : threads) t.join();
+    std::cout << "Compression complete!" << std::endl;
+}
+
+int main() {
+    std::string inputFile = "input.txt";
+    std::string outputFile = "compressed.bin";
+
+    int numThreads = 4; // You can change this
+    multithreadedCompress(inputFile, outputFile, numThreads);
+
+    return 0;
+}
